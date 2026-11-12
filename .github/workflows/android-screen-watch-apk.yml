@@ -3,6 +3,8 @@ name: Android screen-watch APK
 on:
   push:
     branches: [feature/android-screen-watch]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
