@@ -846,19 +846,53 @@ class PhoneCore(
         lastScreen = which
         say(owner, if (which == PhoneScreen.BACKGROUND) ui.get("phone_reading_background", "DSH 正在看后台屏") else ui.get("phone_reading_screen", "DSH 正在看屏幕")) // l10n:keep test default
         if (!current(owner)) return stoppedOut(summary)
-        val snap = driver.observe(detail = a.bool("detail") == true, image = a.strictBool("image") == true,
-            automaticImage = !a.provided("image"))
+        val watchMs = (a.int("watch_ms") ?: 0).coerceIn(0, ScreenWatch.MAX_DURATION_MS)
+        val wantsImage = a.strictBool("image") == true || watchMs > 0
+        var snap = driver.observe(detail = a.bool("detail") == true, image = wantsImage,
+            automaticImage = !a.provided("image") && watchMs == 0)
         if (!current(owner) || !tasks.setAppIfCurrent(owner, snap.appLabel)) return stoppedOut(summary)
-        val shown = returnedScreen(driver, snap, owner)
-        val refused = shown !== snap
+        var shown = returnedScreen(driver, snap, owner)
+        if (shown !== snap) {
+            val reason = if (snap.secure) "系统未提供屏幕图像：可能是安全窗口，也可能是全黑截图；仅凭截图无法判断微信自身是否黑屏。"
+                else "没有读取这个屏幕的内容。"
+            return Out(reason, error = true, screen = shown,
+                app = snap.appLabel ?: snap.packageName, summary = "$summary ${snap.id}", decision = "refused:read")
+        }
+        val changes = ArrayList<String>()
+        val frameCount = ScreenWatch.frameCount(watchMs)
+        for (frame in 1 until frameCount) {
+            if (!current(owner)) return stoppedOut(summary)
+            env.sleep(ScreenWatch.intervalMs(watchMs, frameCount))
+            if (!current(owner)) return stoppedOut(summary)
+            if (env.isLocked()) return locked(summary)
+            snap = driver.observe(detail = false, image = true)
+            if (!current(owner)) return stoppedOut(summary)
+            if (!tasks.setAppIfCurrent(owner, snap.appLabel)) return stoppedOut(summary)
+            val next = returnedScreen(driver, snap, owner)
+            if (next !== snap) {
+                val reason = if (snap.secure) "观察期间系统未提供屏幕图像：可能是安全窗口或全黑截图，无法据此确认应用自身黑屏。"
+                    else "观察期间屏幕内容受到读取策略限制，已停止观察。"
+                return Out(reason, error = true, screen = next,
+                    app = snap.appLabel ?: snap.packageName, summary = "$summary ${snap.id}", decision = "refused:read")
+            }
+            ScreenWatch.diff(shown.text, next.text)?.let(changes::add)
+            shown = next
+        }
+        val watchReport = if (watchMs > 0) buildString {
+            append("连续观察完成：采集 ${frameCount} 帧，观察窗口约 ${watchMs} 毫秒。")
+            if (shown.image == null) append("最新帧没有可传递截图；请结合下方文字树判断，若页面应有图像则需检查安全窗口和截图链路。")
+            if (changes.isEmpty()) append("未检测到可读文本变化；这不代表像素画面完全静止。")
+            else {
+                append("检测到可读内容变化：\\n")
+                append(changes.joinToString("\\n---\\n"))
+            }
+        } else ""
         return Out(
-            // l10n:keep agent tool result
-            if (refused) "没有读取这个屏幕的内容。" else "",
-            error = refused,
+            text = watchReport,
             screen = shown,
             app = snap.appLabel ?: snap.packageName,
             summary = "$summary ${snap.id}",
-            decision = if (refused) "refused:read" else "ok",
+            decision = "ok",
         )
     }
 
@@ -1351,7 +1385,7 @@ class PhoneCore(
             PhoneToolCatalog.APPS -> 15_000L
             PhoneToolCatalog.NOTIFY, PhoneToolCatalog.CLIPBOARD -> 10_000L
             PhoneToolCatalog.OPEN, PhoneToolCatalog.INTENT -> 25_000L
-            PhoneToolCatalog.SCREEN -> 12_000L
+            PhoneToolCatalog.SCREEN -> 35_000L
             PhoneToolCatalog.COLLECT -> 120_000L
             PhoneToolCatalog.HANDOFF -> 30_000L
             else -> 30_000L

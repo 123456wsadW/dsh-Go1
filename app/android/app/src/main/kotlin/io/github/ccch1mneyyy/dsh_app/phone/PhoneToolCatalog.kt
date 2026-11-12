@@ -166,12 +166,14 @@ object PhoneToolCatalog {
         Tool(
             SCREEN,
             // l10n:keep agent tool catalog
-            "读当前屏幕：每行一个元素，[编号] 只在本屏有效。detail:true 附坐标，结果可能截断；image:true 请求截图，安全或能力限制时可能不附图（主屏可带编号，后台图不带编号）；background:true 读后台屏。元素少或为空不表示页面安全；本机文字识别不可用时按回话提示处理，无法核对目标就 handoff。",
+            "读当前屏幕：每行一个元素，[编号] 只在本屏有效。detail:true 附坐标，结果可能截断；image:true 请求截图，安全或能力限制时可能不附图（主屏可带编号，后台图不带编号）；watch_ms:1–5000 在短观察窗口内重复采样屏幕并报告可读文本变化，最终附最新截图；background:true 读后台屏。观察需要手机亮屏解锁且已启用 DSH 手机操控；安全窗口可能拒绝截图。",
             linkedMapOf(
                 // l10n:keep agent tool catalog
                 "detail" to bool("附上已返回元素的坐标，不保证完整页面"),
                 // l10n:keep agent tool catalog
                 "image" to bool("请求附带截图；可能因安全或能力限制省略"),
+                // l10n:keep agent tool catalog
+                "watch_ms" to int("连续观察时长，0–5000 毫秒；大于 0 时自动采集多帧并附最新截图"),
                 // l10n:keep agent tool catalog
                 "background" to bool("读后台屏（不打扰模式）"),
             ),

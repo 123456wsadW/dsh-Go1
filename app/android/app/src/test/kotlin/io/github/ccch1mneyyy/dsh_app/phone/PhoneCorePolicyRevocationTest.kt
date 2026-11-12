@@ -66,9 +66,15 @@ class PhoneCorePolicyRevocationTest {
         var capturedAllowed: (() -> Boolean)? = null
         var capturedAdmission: ((() -> Boolean) -> Boolean)? = null
         var returnedScreen: ScreenSnapshot? = null
+        var observations: List<ScreenSnapshot> = emptyList()
+        var observeCount = 0
         override fun availability() = Availability(true)
         override fun foregroundPackage() = packageName
-        override fun observe(detail: Boolean, image: Boolean) = ScreenSnapshot("${screen.prefix}1", "screen", "Example", packageName)
+        override fun observe(detail: Boolean, image: Boolean): ScreenSnapshot {
+            val index = observeCount++
+            return observations.getOrNull(index) ?: ScreenSnapshot("${screen.prefix}1", "screen", "Example", packageName,
+                image = if (image) byteArrayOf(1) else null, imageMime = if (image) "image/jpeg" else null)
+        }
         override fun target(screenId: String, elementId: Int) = TargetInfo(screenId, elementId,
             "button", "ordinary", packageName, "Example", secret, secret, secret)
         override fun visualScope(screenId: String) = scope
@@ -103,6 +109,23 @@ class PhoneCorePolicyRevocationTest {
         mapOf("screen" to if (background) "b1" else "s1", "id" to 1))
     private fun coordinate() = core.call(PhoneToolCatalog.TAP_XY, mapOf("observation" to "s1", "x" to 2, "y" to 3))
     @After fun close() = core.worker.shutdown()
+
+    @Test fun screenWatchSamplesMultipleFramesAndReturnsTheLatestImage() {
+        main.observations = listOf(
+            ScreenSnapshot("s1", "首屏\\n[1]按钮：聊天", "微信", "com.tencent.mm", image = byteArrayOf(1), imageMime = "image/jpeg"),
+            ScreenSnapshot("s2", "第二帧\\n[1]按钮：聊天\\n[2]文本：收到新消息", "微信", "com.tencent.mm", image = byteArrayOf(2), imageMime = "image/jpeg"),
+            ScreenSnapshot("s3", "第三帧\\n[1]按钮：聊天\\n[2]文本：收到新消息", "微信", "com.tencent.mm", image = byteArrayOf(3), imageMime = "image/jpeg"),
+        )
+
+        val result = core.call(PhoneToolCatalog.SCREEN, mapOf("watch_ms" to 2500))
+
+        assertFalse(result.isError)
+        assertEquals(3, main.observeCount)
+        assertTrue(result.text.contains("连续观察完成"))
+        assertTrue(result.text.contains("收到新消息"))
+        assertArrayEquals(byteArrayOf(3), result.image)
+        assertEquals("image/jpeg", result.imageMime)
+    }
 
     @Test fun denyPublishedWhileTheRealConfirmationWaitsPreventsTheOriginalWrite() {
         observe()

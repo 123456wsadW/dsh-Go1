@@ -1,0 +1,90 @@
+name: Android screen-watch APK
+
+on:
+  push:
+    branches: [feature/android-screen-watch]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-screen-watch-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  NODE_VERSION: 24.22.1
+  GRADLE_VERSION: 9.3.1
+  DSH_MAVEN_MIRRORS: 0
+  TZ: Asia/Shanghai
+
+jobs:
+  build-arm64:
+    name: Build Android 12+ ARM64 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Prepare Android SDK and Flutter dependencies
+        working-directory: app
+        run: |
+          flutter --version
+          flutter pub get --enforce-lockfile
+          printf 'sdk.dir=%s\\nflutter.sdk=%s\\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+          cd android
+          gradle wrapper --gradle-version "$GRADLE_VERSION"
+
+      - name: Build pinned ARM64 Linux runtime bundle
+        run: bash runtime/build-runtime.sh arm64-v8a
+
+      - name: Run Android JVM tests
+        working-directory: app/android
+        run: gradle --stacktrace :app:testArm64DebugUnitTest
+
+      - name: Build ARM64 APK
+        env:
+          DSH_BETA_TOKEN_FILE: ''
+        run: bash tooling/build-apk.sh -f arm64 --keep-daemon
+
+      - name: Verify APK exists and record checksum
+        run: |
+          apk=app/build/app/outputs/flutter-apk/app-arm64-release.apk
+          test -s "$apk"
+          sha256sum "$apk" | tee app/build/app/outputs/flutter-apk/SHA256SUMS.txt
+          file "$apk"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dsh-go-android12-arm64-screen-watch
+          path: |
+            app/build/app/outputs/flutter-apk/app-arm64-release.apk
+            app/build/app/outputs/flutter-apk/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
