@@ -58,7 +58,7 @@ jobs:
         run: |
           flutter --version
           flutter pub get --enforce-lockfile
-          printf 'sdk.dir=%s\\nflutter.sdk=%s\\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+          printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
           cd android
           gradle wrapper --gradle-version "$GRADLE_VERSION"
 
