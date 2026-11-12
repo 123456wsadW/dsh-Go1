@@ -89,6 +89,12 @@ class PhoneToolSchemaTest {
         val duration = (tap.properties["duration_ms"] as Map<*, *>)["description"] as String
         assertTrue(duration.contains("100–2000"))
         assertTrue(duration.contains("400"))
+        val screen = PhoneToolCatalog.tools.single { it.name == PhoneToolCatalog.SCREEN }
+        assertEquals(listOf("detail", "image", "watch_ms", "background"), screen.properties.keys.toList())
+        val watch = screen.properties["watch_ms"] as Map<*, *>
+        assertEquals("integer", watch["type"])
+        assertTrue((watch["description"] as String).contains("0–5000"))
+        assertTrue(screen.description.contains("重复采样屏幕"))
         val collect = PhoneToolCatalog.tools.single { it.name == PhoneToolCatalog.COLLECT }
         val count = collect.properties["max_pages"] as Map<*, *>
         assertEquals("integer", count["type"])
